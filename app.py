@@ -58,27 +58,27 @@ target_types = {
 
 
 
-def login_required(f):
-  ''' Checks If User Is Logged In '''
-  @wraps(f)
-  def decorated_function(*args, **kwargs):
-    if 'session_id' in user_session:
-      return f(*args, **kwargs)
-    else:
-      # flash('Please Log In To Use This Site.')
-      return redirect('/signin')
-  return decorated_function
+# def login_required(f):
+#   ''' Checks If User Is Logged In '''
+#   @wraps(f)
+#   def decorated_function(*args, **kwargs):
+#     if 'session_id' in user_session:
+#       return f(*args, **kwargs)
+#     else:
+#       # flash('Please Log In To Use This Site.')
+#       return redirect('/signin')
+#   return decorated_function
 
 
-def ajax_login_required(f):
-  ''' Checks If User Is Logged In '''
-  @wraps(f)
-  def decorated_function(*args, **kwargs):
-    if 'session_id' in user_session:
-      return f(*args, **kwargs)
-    else:
-      return make_response({ "message": "Not signed in" }, 401)
-  return decorated_function
+# def ajax_login_required(f):
+#   ''' Checks If User Is Logged In '''
+#   @wraps(f)
+#   def decorated_function(*args, **kwargs):
+#     if 'session_id' in user_session:
+#       return f(*args, **kwargs)
+#     else:
+#       return make_response({ "message": "Not signed in" }, 401)
+#   return decorated_function
 
 
 def make_jwt(data):
@@ -158,6 +158,7 @@ def fill_notification(notification):
 
 
 # Users
+
 @app.route('/check_session', methods=['GET'])
 def check_session():
   data = check_request_auth()
@@ -500,8 +501,8 @@ def update_icon():
 
 
 @user_authorized
-@app.route('/update_task', methods=['PUT'])
-def update_task():
+@app.route('/update_post', methods=['PUT'])
+def update_post():
   user = check_request_auth()
   data = json.loads(request.data)
 
@@ -538,7 +539,7 @@ def update_task():
 
   return jsonify(message = "New Task Created!", post = new_post.serialize)
 
-
+# ---
 # --- DELETE Routes --- #
 
 @user_authorized
