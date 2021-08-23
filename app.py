@@ -286,6 +286,13 @@ def check_session():
   return result
 
 
+@app.route('/users/all', methods=['GET'])
+def get_users_all():
+  users = db_session.query(Users).order_by(desc(Users.id)).all()
+  users_data = [u.serialize for u in users]
+  return jsonify(users = users_data)
+
+
 @app.route('/users/<int:user_id>', methods=['GET'])
 def get_user_by_id(user_id):
   user = db_session.query(Users).filter_by(id = user_id).first()
