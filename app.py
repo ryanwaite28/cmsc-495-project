@@ -222,6 +222,7 @@ def ping():
   msg = format_sse(data = 'pong')
   SSE.push(msg = msg)
   SSE.push(msg = format_sse(data = 'admit one', event = 'FOR-USER:1'))
+  SSE.push(msg = format_sse(data = json.dumps({ "message": "admit one" }), event = 'FOR-USER:1'))
   return {}, 200
 
 
