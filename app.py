@@ -240,7 +240,7 @@ def root_toute():
 @app.route('/get-session-cookie', methods=['GET'])
 def get_session_cookie():
   session_id = get_session_id_jwt()
-  resp = make_response({ "message": f"session_id: {session_id}" }, 200)
+  resp = make_response({ "session_id": session_id }, 200)
   resp.set_cookie('session_id', session_id)
   return resp
 
