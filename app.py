@@ -273,7 +273,14 @@ def index():
           var message = document.getElementById("msg").value;
           post('/publish', message);
         }
+
+        function ping() {
+          fetch(`/ping`).then(r => r.json()).then(d => { console.log(d); });
+        }
       </script>
+      <button onclick="ping()">ping</button>
+      <br/>
+      <br/>
       <input type="text" id="msg">
       <button onclick="publish()">send</button>
       <p id="messages"></p>
