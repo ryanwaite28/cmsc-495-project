@@ -221,7 +221,8 @@ def listen():
 def ping():
   msg = format_sse(data = 'pong')
   SSE.push(msg = msg)
-  SSE.push(msg = format_sse(data = 'pong', event = 'FOR-USER:1'))
+  SSE.push(msg = format_sse(data = 'admit one', event = 'FOR-USER:1'))
+  SSE.push(msg = format_sse(data = json.dumps({ "message": "admit one" }), event = 'FOR-USER:1'))
   return {}, 200
 
 
@@ -284,6 +285,13 @@ def check_session():
   data = check_request_auth()
   result = jsonify(data = None) if not data else data
   return result
+
+
+@app.route('/users/all', methods=['GET'])
+def get_users_all():
+  users = db_session.query(Users).order_by(desc(Users.id)).all()
+  users_data = [u.serialize for u in users]
+  return jsonify(users = users_data)
 
 
 @app.route('/users/<int:user_id>', methods=['GET'])
