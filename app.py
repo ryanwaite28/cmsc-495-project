@@ -1107,7 +1107,7 @@ def delete_comment(comment_id):
 
   comment = db_session.query(Comments).filter(Comments.id == comment_id).filter(Comments.owner_id == user['id']).first()
   if not comment:
-    return make_response({ "message": "Comment does not exist with id " + str(comment) }, 404)
+    return make_response({ "message": "Comment does not exist with id " + str(comment_id) }, 404)
   db_session.delete(comment)
   db_session.commit()
 
