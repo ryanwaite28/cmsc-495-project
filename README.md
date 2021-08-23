@@ -37,8 +37,14 @@ This repository contains only the code for the backend server.
 To run the backend, follow the steps below:
 * install Python 3.7.6 or above
 * open a new terminal instance
-* in the terminal, begin installing the needed python packages by running this command: `pip install dotenv flask sqlalchemy pyjwt bcrypt cloudinary`
-* run the python file, which can be done many ways. The most typical way is to open a terminal, `cd` (change directory) to the project root folder where the python files are, and run `python app.py`
+* in the terminal, begin installing the needed python packages by running this command:
+```
+pip install dotenv flask sqlalchemy pyjwt bcrypt cloudinary
+```
+* run the python file, which can be done many ways. The most typical way is to open a terminal, `cd` (change directory) to the project root folder where the python files are, and run 
+```
+python app.py
+```
 
 You should see in the terminal that the server initialized the local database and is listening for requests.
 
