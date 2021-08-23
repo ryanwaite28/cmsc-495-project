@@ -63,6 +63,7 @@ class MessageAnnouncer:
       try:
         self.messages_queue_by_request_sid[id].put_nowait(msg)
       except queue.Full:
+        print('deleting queue for client listening with id:', id)
         del self.messages_queue_by_request_sid[id]
 
     else:
@@ -70,6 +71,7 @@ class MessageAnnouncer:
         try:
           self.listeners[i].put_nowait(msg)
         except queue.Full:
+          print('deleting queue for client listening at index:', i)
           del self.listeners[i]
 
 def format_sse(data, event = None):
