@@ -55,3 +55,5 @@ NOTE: if you open the dev tools on that page and run this in the console, you sh
 ```javascript
 fetch(`/ping`)
 ```
+
+To upload files, the .env file needs to be populated with the cloudinary environment variables. Please reach out to one of the team members or use your own; cloudinary has a free tier for dev testing use.
