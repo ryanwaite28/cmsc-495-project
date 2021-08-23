@@ -1,5 +1,5 @@
 # ignore files/folders from git
 
-./__pycache__
-./database.db
-./.env
+__pycache__
+database.db
+.env
