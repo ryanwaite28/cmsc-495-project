@@ -93,19 +93,19 @@ target_types = {
 
 def make_jwt(data):
   try:
-    token = jwt.encode(payload = data, key = app.config['SECRET_KEY'], algorithm = 'RS256')
+    token = jwt.encode(payload = data, key = app.config['SECRET_KEY'], algorithm = 'HS256')
     return token
-  except jwt.exceptions.ExpiredSignatureError as error:
-    print(error)
+  except Exception as error:
+    print('make_jwt error:', error)
     return None
 
 
 def decode_jwt(token):
   try:
-    data = jwt.decode(token, key = app.config['SECRET_KEY'], algorithms=['RS256', ])
+    data = jwt.decode(token, key = app.config['SECRET_KEY'], algorithms=['HS256'])
     return data
-  except jwt.exceptions.ExpiredSignatureError as error:
-    print(error)
+  except Exception as error:
+    print('decode_jwt error:', error)
     return None
 
 
@@ -115,7 +115,7 @@ def check_request_auth():
   Authorization = request.headers['Authorization']
   if not Authorization:
     return make_response({ "message": "Authorization header cannot be empty" }, 400)
-  if not re.match("(Bearer\s[^])", Authorization):
+  if not re.match("^Bearer\s(.*)$", Authorization):
     return make_response({ "message": "Authorization header must be in Bearer format" }, 400)
   token = Authorization.split(' ')[1]
   data = decode_jwt(token)
@@ -200,7 +200,12 @@ def fill_notification(notification_obj):
 @app.route('/', methods=['GET'])
 def root_toute():
   return make_response({ "message": "Blog Application" }, 200)
-
+  
+@app.route('/test-make-jwt', methods=['GET'])
+def test_make_jwt():
+  data = make_jwt({ "message": "Admit One" })
+  print(data)
+  return make_response({ "results": data }, 200)
 
 @app.route('/listen', methods=['GET'])
 def listen():
