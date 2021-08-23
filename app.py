@@ -1,6 +1,6 @@
 # --- Modules/Functions --- #
 
-import os, re, jwt, json, html, bcrypt, queue
+import os, re, jwt, json, html, bcrypt, queue, string, random, datetime
 from functools import wraps
 from dotenv import load_dotenv
 
@@ -47,18 +47,30 @@ class MessageAnnouncer:
 
   def __init__(self):
     self.listeners = []
+    self.messages_queue_by_request_sid = {}
 
-  def listen(self):
-    q = queue.Queue(maxsize = 7)
+  def listen(self, id = None):
+    q = queue.Queue(maxsize = 9)
     self.listeners.append(q)
+    if id:
+      print('client listening with id:', id)
+      self.messages_queue_by_request_sid[id] = q
     return q
 
-  def push(self, msg):
-    for i in reversed(range(len(self.listeners))):
+  def push(self, msg, id = None):
+    if id:
+      print('pushing to client listening with id:', id)
       try:
-        self.listeners[i].put_nowait(msg)
+        self.messages_queue_by_request_sid[id].put_nowait(msg)
       except queue.Full:
-        del self.listeners[i]
+        del self.messages_queue_by_request_sid[id]
+
+    else:
+      for i in reversed(range(len(self.listeners))):
+        try:
+          self.listeners[i].put_nowait(msg)
+        except queue.Full:
+          del self.listeners[i]
 
 def format_sse(data, event = None):
   msg = f'data: {data}\n\n'
@@ -154,6 +166,29 @@ def upload_file(file, old_id = None):
     return False
 
 
+# https://stackoverflow.com/questions/28154066/how-to-convert-datetime-to-integer-in-python
+def date_to_integer(dt_time):
+  return 10000*dt_time.year + 100*dt_time.month + dt_time.day
+
+
+def generate_unique_str(n = 19):
+  # return ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(n))
+  return ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(n))
+
+
+def get_session_id_jwt():
+  today = datetime.datetime.today()
+  time = str(today.hour) + '.' + str(today.minute) + '.' + str(today.second) + '.' + str(today.microsecond)
+  datetime_custom_str = str(date_to_integer(today)) + '-' + time
+  new_rid = datetime_custom_str + '|' + generate_unique_str()
+  session_id = make_jwt({ "session_id": new_rid })
+
+  print('new_rid', new_rid)
+  print('session_id', session_id)
+
+  return session_id
+
+
 
 def fill_notification(notification_obj):
   from_user = notification_obj['from']
@@ -200,6 +235,15 @@ def fill_notification(notification_obj):
 @app.route('/', methods=['GET'])
 def root_toute():
   return make_response({ "message": "Blog Application" }, 200)
+
+
+@app.route('/get-session-cookie', methods=['GET'])
+def get_session_cookie():
+  session_id = get_session_id_jwt()
+  resp = make_response({ "message": "Blog Application" }, 200)
+  resp.set_cookie('session_id', session_id)
+  return resp
+
   
 @app.route('/test-make-jwt', methods=['GET'])
 def test_make_jwt():
@@ -209,20 +253,27 @@ def test_make_jwt():
 
 @app.route('/listen', methods=['GET'])
 def listen():
-  def stream():
-    messages = SSE.listen()  # returns a queue.Queue
+  def stream(id):
+    messages = SSE.listen(id)  # returns a queue.Queue
     while True:
       msg = messages.get()  # blocks until a new message arrives
       yield msg
-  return Response(stream(), mimetype = 'text/event-stream')
+
+  request_session_id = request.cookies.get('session_id')
+  session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
+  resp = Response(stream(session_id), mimetype = 'text/event-stream')
+  return resp
 
 
 @app.route('/ping')
 def ping():
+  request_session_id = request.cookies.get('session_id')
+  session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
+
   msg = format_sse(data = 'pong')
-  SSE.push(msg = msg)
-  SSE.push(msg = format_sse(data = 'admit one', event = 'FOR-USER:1'))
+  SSE.push(msg = msg, id = session_id)
   SSE.push(msg = format_sse(data = json.dumps({ "message": "admit one" }), event = 'FOR-USER:1'))
+  
   return {}, 200
 
 
@@ -234,7 +285,10 @@ def publish():
   
   print(request.data.decode("utf-8"))
   msg = format_sse(data = request.data.decode("utf-8"))
-  SSE.push(msg = msg)
+
+  request_session_id = request.cookies.get('session_id')
+  session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
+  SSE.push(msg = msg, id = session_id)
   return { "message": "Admit One" }, 200
 
 
@@ -251,15 +305,30 @@ def index():
       <script>
         var eventSource = new EventSource('/listen');
 
-        eventSource.onmessage = function(m) {
-          console.log(m);
+        eventSource.onopen = function(e) {
+          console.log(`connected to /listen sse stream`, e);
+        }
+
+        eventSource.onerror = function(e) {
+          console.log(`error on /listen sse stream`, e);
+        }
+
+        eventSource.onmessage = function(e) {
+          console.log(e);
           var el = document.getElementById('messages');
-          el.innerHTML += m.data;
+          el.innerHTML += e.data;
           el.innerHTML += "</br>";
         }
 
         eventSource.addEventListener("FOR-USER:1", function(e) {
-          console.log(e)
+          let parsed;
+          try {
+            parsed = JSON.parse(e.data);
+          } catch (e) {
+            console.log(e);
+          }
+
+          console.log(`FOR-USER event`, e, parsed);
         })
 
         function post(url, data) {
@@ -275,8 +344,16 @@ def index():
         }
 
         function ping() {
-          fetch(`/ping`).then(r => r.json()).then(d => { console.log(d); });
+          fetch(`/ping`);
         }
+
+        // initialize/trigger sse eventsource on open
+        document.addEventListener('DOMContentLoaded', () => {
+          console.log('dom loaded.');
+          setTimeout(() => {
+            ping();
+          }, 1000);
+        });
       </script>
       <button onclick="ping()">ping</button>
       <br/>
