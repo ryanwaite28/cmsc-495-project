@@ -240,7 +240,7 @@ def root_toute():
 @app.route('/get-session-cookie', methods=['GET'])
 def get_session_cookie():
   session_id = get_session_id_jwt()
-  resp = make_response({ "message": "Blog Application" }, 200)
+  resp = make_response({ "message": f"session_id: {session_id}" }, 200)
   resp.set_cookie('session_id', session_id)
   return resp
 
@@ -266,6 +266,8 @@ def listen():
   session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
   resp = Response(stream(session_id), mimetype = 'text/event-stream')
   
+  print('listeners:', SSE.listeners)
+
   print('new client listening.')
   return resp
 
