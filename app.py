@@ -269,7 +269,7 @@ def listen():
   session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
   resp = Response(stream(session_id), mimetype = 'text/event-stream')
   
-  print('listeners:', SSE.listeners)
+  print('listeners:', SSE.listeners, len(SSE.listeners))
 
   print('new client listening.')
   return resp
