@@ -53,8 +53,8 @@ class Follows(Base):
     # Returns Data Object In Proper Format
     return {
       'id': self.id,
-      'user': self.user_rel.serialize,
-      'follows': self.follows_rel.serialize,
+      'user': self.user_rel.serialize if self.user_rel else None,
+      'follows': self.follows_rel.serialize if self.follows_rel else None,
       'date_created': str(self.date_created),
     }
 
@@ -74,7 +74,7 @@ class Posts(Base):
   def serialize(self):
     return {
       'id': self.id,
-      'owner': self.owner_rel.serialize,
+      'owner': self.owner_rel.serialize if self.owner_rel else None,
       'title': self.title,
       'body': self.body,
       'hashtags': self.hashtags,
@@ -97,7 +97,7 @@ class PostLikes(Base):
   def serialize(self):
     return {
       'id': self.id,
-      'owner': self.owner_rel.serialize,
+      'owner': self.owner_rel.serialize if self.owner_rel else None,
       'post_id': self.post_id,
       'date_created': str(self.date_created),
     }
@@ -120,7 +120,7 @@ class Comments(Base):
   def serialize(self):
     return {
       'id': self.id,
-      'owner': self.owner_rel.serialize,
+      'owner': self.owner_rel.serialize if self.owner_rel else None,
       'post_id': self.post_id,
       'body': self.body,
       'hashtags': self.hashtags,
@@ -143,7 +143,7 @@ class CommentLikes(Base):
   def serialize(self):
     return {
       'id': self.id,
-      'owner': self.owner_rel.serialize,
+      'owner': self.owner_rel.serialize if self.owner_rel else None,
       'comment_id': self.comment_id,
       'date_created': str(self.date_created),
     }
@@ -159,15 +159,16 @@ class Messagings(Base):
   sender_id           = Column(Integer, ForeignKey('users.id'))
   sender_rel          = relationship('Users', foreign_keys=[sender_id])
   date_created        = Column(DateTime, server_default = func.now())
-
+  last_updated        = Column(DateTime, server_default = func.now())
 
   @property
   def serialize(self):
     return {
       'id': self.id,
-      'user': self.user_rel.serialize,
-      'sender': self.sender_rel.serialize,
+      'user': self.user_rel.serialize if self.user_rel else None,
+      'sender': self.sender_rel.serialize if self.sender_rel else None,
       'date_created': str(self.date_created),
+      'last_updated': str(self.last_updated),
     }
 
 
@@ -183,13 +184,12 @@ class Messages(Base):
   read                = Column(Boolean, default = False)
   date_created        = Column(DateTime, server_default = func.now())
 
-
   @property
   def serialize(self):
     return {
       'id': self.id,
-      'user': self.user_rel.serialize,
-      'sender': self.sender_rel.serialize,
+      'user': self.user_rel.serialize if self.user_rel else None,
+      'sender': self.sender_rel.serialize if self.sender_rel else None,
       'date_created': str(self.date_created),
     }
 
@@ -213,8 +213,8 @@ class Notifications(Base):
   def serialize(self):
     return {
       'id': self.id,
-      'from': self.from_rel.serialize,
-      'to': self.to_rel.serialize,
+      'from': self.from_rel.serialize if self.from_rel else None,
+      'to': self.to_rel.serialize if self.to_rel else None,
       'event': self.header,
       'target_type': self.target_type,
       'target_id': self.target_id,
