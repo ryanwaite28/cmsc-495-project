@@ -498,10 +498,13 @@ def get_comment_likes(comment_id):
 
 # --- POST Routes --- #
 
-@app.route('/test-make-jwt', methods=['GET'])
+@app.route('/test-make-jwt', methods=['POST'])
 def test_make_jwt_post():
   try:
-    data = make_jwt(json.loads(request.data))
+    payload = json.loads(request.data)
+    print(request.data)
+    print(payload)
+    data = make_jwt(payload)
     print(data)
     return make_response({ "results": data }, 200)
   except Exception as error:
