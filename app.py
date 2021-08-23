@@ -256,7 +256,8 @@ def test_make_jwt():
 @app.route('/listen', methods=['GET'])
 def listen():
   def stream(id):
-    messages = SSE.listen(id)  # returns a queue.Queue
+    # messages = SSE.listen(id)  # returns a queue.Queue
+    messages = SSE.listen()  # no need to call with specific; keep app minimal
     yield format_sse(data = 'pong')
     while True:
       print('waiting for next message in stream...')
