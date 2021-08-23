@@ -57,3 +57,10 @@ fetch(`/ping`)
 ```
 
 To upload files, the .env file needs to be populated with the cloudinary environment variables. Please reach out to one of the team members or use your own; cloudinary has a free tier for dev testing use.
+
+
+## Deployed Environment
+
+This backend is also deployed to production on Heroku, via GitHub connection (meaning the Heroku app is bulling from this repo), at this domain: <a href="https://rmw-cmsc-495-project-backend.herokuapp.com">https://rmw-cmsc-495-project-backend.herokuapp.com</a>.
+
+You can view the deployed events demo page here: <a href="https://rmw-cmsc-495-project-backend.herokuapp.com/events">https://rmw-cmsc-495-project-backend.herokuapp.com/events</a>.
