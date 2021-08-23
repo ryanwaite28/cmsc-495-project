@@ -255,13 +255,18 @@ def test_make_jwt():
 def listen():
   def stream(id):
     messages = SSE.listen(id)  # returns a queue.Queue
+    yield format_sse(data = 'pong')
     while True:
+      print('waiting for next message in stream...')
       msg = messages.get()  # blocks until a new message arrives
+      print('message arrived in stream; yielding:', msg)
       yield msg
 
   request_session_id = request.cookies.get('session_id')
   session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
   resp = Response(stream(session_id), mimetype = 'text/event-stream')
+  
+  print('new client listening.')
   return resp
 
 
@@ -351,7 +356,7 @@ def index():
         document.addEventListener('DOMContentLoaded', () => {
           console.log('dom loaded.');
           setTimeout(() => {
-            ping();
+            // ping();
           }, 1000);
         });
       </script>
