@@ -1,10 +1,11 @@
-import sys, os, string, random, psycopg2
+import sys, os, string, random, psycopg2, sqlite3
 
 from sqlalchemy import Column, ForeignKey, Integer, String, DateTime, Float, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker, backref
+from sqlalchemy.orm import relationship, sessionmaker, backref, scoped_session
 from sqlalchemy import create_engine
 from sqlalchemy.sql import func
+from sqlalchemy.sql.sqltypes import TIMESTAMP
 
 
 
@@ -13,15 +14,16 @@ Base = declarative_base()
 class Users(Base):
   __tablename__ = 'users'
 
-  id                  = Column(Integer, primary_key = True)
-  displayname         = Column(String(80), nullable = False)
-  username            = Column(String(80), nullable = False)
-  password            = Column(String(80), nullable = False)
-  bio                 = Column(String(250), default = '')
-  icon_link           = Column(String, default = '/static/img/anon.png')
-  icon_id             = Column(String, default = '')
-  date_created        = Column(DateTime, server_default = func.now())
-  last_loggedin       = Column(DateTime, server_default = func.now())
+  id                         = Column(Integer, primary_key = True)
+  displayname                = Column(String(80), nullable = False)
+  username                   = Column(String(80), nullable = False)
+  password                   = Column(String(80), nullable = False)
+  bio                        = Column(String(250), default = '')
+  icon_link                  = Column(String, default = '')
+  icon_id                    = Column(String, default = '')
+  date_created               = Column(TIMESTAMP(timezone = True), server_default = func.now())
+  last_loggedin              = Column(TIMESTAMP(timezone = True), server_default = func.now())
+  last_read_notifications    = Column(TIMESTAMP(timezone = True), server_default = func.now())
 
   @property
   def serialize(self):
@@ -34,6 +36,7 @@ class Users(Base):
       'icon_id': self.icon_id,
       'date_created': str(self.date_created),
       'last_loggedin': str(self.last_loggedin),
+      'last_read_notifications': str(self.last_read_notifications),
     }
 
 
@@ -46,7 +49,7 @@ class Follows(Base):
   user_rel            = relationship('Users', foreign_keys=[user_id])
   follows_id          = Column(Integer, ForeignKey('users.id'))
   follows_rel         = relationship('Users', foreign_keys=[follows_id])
-  date_created        = Column(DateTime, server_default=func.now())
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
 
   @property
   def serialize(self):
@@ -68,7 +71,8 @@ class Posts(Base):
   title               = Column(String, nullable = False)
   body                = Column(Text, nullable = False)
   hashtags            = Column(String, default = '')
-  date_created        = Column(DateTime, server_default = func.now())
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
+  last_updated        = Column(TIMESTAMP(timezone = True), server_default = func.now(), onupdate = func.now())
 
   @property
   def serialize(self):
@@ -80,6 +84,7 @@ class Posts(Base):
       'hashtags': self.hashtags,
       'hashtags_list': self.hashtags.split(','),
       'date_created': str(self.date_created),
+      'last_updated': str(self.last_updated),
     }
 
 
@@ -92,6 +97,7 @@ class PostLikes(Base):
   owner_rel           = relationship('Users')
   post_id             = Column(Integer, ForeignKey('posts.id'))
   post_rel            = relationship('Posts')
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
 
   @property
   def serialize(self):
@@ -113,8 +119,9 @@ class Comments(Base):
   post_id             = Column(Integer, ForeignKey('posts.id'))
   post_rel            = relationship('Posts')
   body                = Column(Text, nullable = False)
-  hashtags            = Column(String(80), nullable = False)
-  date_created        = Column(DateTime, server_default = func.now())
+  hashtags            = Column(String(80), default = '')
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
+  last_updated        = Column(TIMESTAMP(timezone = True), server_default = func.now(), onupdate = func.now())
 
   @property
   def serialize(self):
@@ -125,6 +132,7 @@ class Comments(Base):
       'body': self.body,
       'hashtags': self.hashtags,
       'date_created': str(self.date_created),
+      'last_updated': str(self.last_updated),
     }
 
 
@@ -137,7 +145,7 @@ class CommentLikes(Base):
   owner_rel           = relationship('Users')
   comment_id          = Column(Integer, ForeignKey('comments.id'))
   comment_rel         = relationship('Comments')
-  date_created        = Column(DateTime, server_default = func.now())
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
 
   @property
   def serialize(self):
@@ -158,8 +166,8 @@ class Messagings(Base):
   user_rel            = relationship('Users', foreign_keys=[user_id])
   sender_id           = Column(Integer, ForeignKey('users.id'))
   sender_rel          = relationship('Users', foreign_keys=[sender_id])
-  date_created        = Column(DateTime, server_default = func.now())
-  last_updated        = Column(DateTime, server_default = func.now())
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
+  last_updated        = Column(TIMESTAMP(timezone = True), server_default = func.now(), onupdate = func.now())
 
   @property
   def serialize(self):
@@ -169,6 +177,28 @@ class Messagings(Base):
       'sender': self.sender_rel.serialize if self.sender_rel else None,
       'date_created': str(self.date_created),
       'last_updated': str(self.last_updated),
+    }
+
+
+class MessagingUserLastOpens(Base):
+  __tablename__ = 'messaging_user_last_opens'
+
+  id                  = Column(Integer, nullable = False, primary_key = True)
+  messaging_id        = Column(Integer, ForeignKey('messagings.id'))
+  messaging_rel       = relationship('Messagings', foreign_keys=[messaging_id])
+  user_id             = Column(Integer, ForeignKey('users.id'))
+  user_rel            = relationship('Users', foreign_keys=[user_id])
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
+  user_last_opened    = Column(TIMESTAMP(timezone = True), server_default = func.now())
+
+  @property
+  def serialize(self):
+    return {
+      'id': self.id,
+      'messaging': self.messaging_rel.serialize if self.messaging_rel else None,
+      'user_id': self.user_id,
+      'date_created': str(self.date_created),
+      'user_last_opened': str(self.user_last_opened),
     }
 
 
@@ -182,14 +212,16 @@ class Messages(Base):
   to_rel              = relationship('Users', foreign_keys=[to_id])
   body                = Column(Text, nullable = False)
   read                = Column(Boolean, default = False)
-  date_created        = Column(DateTime, server_default = func.now())
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
 
   @property
   def serialize(self):
     return {
       'id': self.id,
-      'user': self.user_rel.serialize if self.user_rel else None,
-      'sender': self.sender_rel.serialize if self.sender_rel else None,
+      'body': self.body,
+      "read": self.read,
+      'from': self.from_rel.serialize if self.from_rel else None,
+      'to': self.to_rel.serialize if self.to_rel else None,
       'date_created': str(self.date_created),
     }
 
@@ -207,7 +239,7 @@ class Notifications(Base):
   target_type         = Column(String, nullable = False)
   target_id           = Column(String, nullable = False)
   read                = Column(Boolean, default = False)
-  date_created        = Column(DateTime, server_default = func.now())
+  date_created        = Column(TIMESTAMP(timezone = True), server_default = func.now())
 
   @property
   def serialize(self):
@@ -215,7 +247,7 @@ class Notifications(Base):
       'id': self.id,
       'from': self.from_rel.serialize if self.from_rel else None,
       'to': self.to_rel.serialize if self.to_rel else None,
-      'event': self.header,
+      'event': self.event,
       'target_type': self.target_type,
       'target_id': self.target_id,
       'read': self.read,
@@ -226,7 +258,7 @@ class Notifications(Base):
 
 # --- Create Database Session --- #
 
-sqlite_file = "sqlite:///database.db"
+sqlite_file = "sqlite:///database.db?check_same_thread=False"
 db_string = os.environ.get('DATABASE_URL', sqlite_file)
 app_state = ''
 
@@ -241,4 +273,5 @@ engine = create_engine(db_string, echo=True)
 Base.metadata.create_all(engine)
 Base.metadata.bind = engine
 DBSession = sessionmaker(bind = engine)
-db_session = DBSession()
+Scoped_Session = scoped_session(DBSession)
+db_session = Scoped_Session()

@@ -1,12 +1,13 @@
 # --- Modules/Functions --- #
 
-import os, re, jwt, json, html, bcrypt, queue, string, random, datetime
+import os, re, jwt, json, html, bcrypt, queue, string, random, datetime, sqlite3
 from functools import wraps
 from dotenv import load_dotenv
 
 from flask import Flask, Response, make_response, request, jsonify, session as user_session
+from flask_cors import CORS, cross_origin
 from sqlalchemy.sql import func
-from sqlalchemy import desc, asc
+from sqlalchemy import desc, asc, or_, and_
 
 from cloudinary import config as cloudinary_config
 from cloudinary.uploader import upload as cloudinary_upload
@@ -21,6 +22,10 @@ from models import CommentLikes, Messagings, Messages, Notifications
 # --- Setup --- #
 
 load_dotenv()
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = '6Y#6G1$56F)$JD8*4G!?/Eoift4gk%&^(N*(|]={;96dfs3TYD5$)F&*DFj/YDR'
+cors = CORS(app, supports_credentials=True, origin = '*')
 
 CLOUDINARY_URL = os.getenv('CLOUDINARY_URL')
 CLOUDINARY_API_KEY = os.getenv('CLOUDINARY_API_KEY')
@@ -88,11 +93,6 @@ def format_sse(data, event = None):
 
 SSE = MessageAnnouncer()
 SSE_TEST = MessageAnnouncer()
-
-
-app = Flask(__name__)
-app.config['SECRET_KEY'] = '6Y#6G1$56F)$JD8*4G!?/Eoift4gk%&^(N*(|]={;96dfs3TYD5$)F&*DFj/YDR'
-
 
 event_types = {
   "NEW_FOLLOWER": "NEW_FOLLOWER",
@@ -425,7 +425,7 @@ def get_users_all():
 @app.route('/users/<int:user_id>', methods=['GET'])
 def get_user_by_id(user_id):
   user = db_session.query(Users).filter_by(id = user_id).first()
-  return jsonify(user = user)
+  return jsonify(user = user.serialize)
 
 
 @user_authorized
@@ -435,7 +435,7 @@ def get_user_notifications(user_id):
   if user_id != user['id']:
     return make_response({"message": "User id from auth does not match user id in url"}, 400)
   
-  notifications = db_session.query(Notifications).filter_by(to_id = user_id).all()
+  notifications = db_session.query(Notifications).filter_by(to_id = user_id).order_by(desc(Notifications.id)).all()
   notifications_data = [fill_notification(n.serialize) for n in notifications]
   return jsonify(notifications = notifications_data)
 
@@ -463,28 +463,21 @@ def get_user_messagings(user_id):
 
 
 @user_authorized
-@app.route('/users/<int:user_id>/messagings/<int:other_id>/messages', methods=['GET'])
-def get_user_messages_with_other_user(user_id, other_id):
+@app.route('/users/<int:user_id>/messagings/<int:other_user_id>/messages', methods=['GET'])
+def get_user_messages_with_other_user(user_id, other_user_id):
   user = check_request_auth()
   if user_id != user['id']:
     return make_response({"message": "User id from auth does not match user id in url"}, 400)
 
-  format_messages = lambda m: {
-    "id": m.id,
-    "date_created": m.date_created,
-    "body": m.body,
-    "read": m.read,
-    "you": m.from_rel.serialize if m.from_id == user_id else m.to_rel.serialize,
-    "other": m.to_rel.serialize if m.from_id == user_id else m.from_rel.serialize,
-  }
-
   messages = db_session.query(Messages) \
-    .filter((Messages.from_id == user_id) | (Messages.to_id == other_id)) \
-    .filter((Messages.from_id == other_id) | (Messages.to_id == user_id)) \
-    .order_by(asc(Messages.id)) \
-    .all()
+    .filter(
+      or_(
+        and_(Messages.from_id == user_id, Messages.to_id == other_user_id),
+        and_(Messages.from_id == other_user_id, Messages.to_id == user_id),
+      ),
+    ).order_by(desc(Messages.id)).all()
 
-  messages_data = [format_messages(m) for m in messages]
+  messages_data = [m.serialize for m in messages]
   return jsonify(messages = messages_data)
 
 
@@ -681,8 +674,10 @@ def sign_up():
   if check_username:
     return make_response({"message": "Username already in use"}, 400)
 
-  hash = bcrypt.hashpw(password, bcrypt.gensalt()).encode('utf8')
-  new_user = Users(displayname = displayname, username = username, password = hash)
+  hash = bcrypt.hashpw(password, bcrypt.gensalt())
+  print('new password hash:', hash)
+  hash_str = hash.decode("utf-8")
+  new_user = Users(displayname = displayname, username = username, password = hash_str)
   db_session.add(new_user)
   db_session.commit()
 
@@ -777,7 +772,7 @@ def create_comment(post_id):
 
   if post.owner_id != user['id']:
     event_name = f'FOR-USER:{post.owner_id}'
-    event_data = json.dumps(new_notification.serialize)
+    event_data = json.dumps(fill_notification(new_notification.serialize))
     event_msg = format_sse(event_data, event_name)
     SSE.push(event_msg)
 
@@ -805,10 +800,12 @@ def create_user_messages_with_other_user(user_id, other_user_id):
     return make_response({"message": "Body field cannot be empty"}, 400)
 
   messaging = db_session.query(Messagings) \
-    .filter((Messagings.user_id == user_id) | (Messagings.sender_id == other_user_id)) \
-    .filter((Messagings.user_id == other_user_id) | (Messagings.sender_id == user_id)) \
-    .order_by(desc(Messagings.last_updated)) \
-    .all()
+    .filter(
+      or_(
+        and_(Messagings.user_id == user_id, Messagings.sender_id == other_user_id),
+        and_(Messagings.user_id == other_user_id, Messagings.sender_id == user_id),
+      ),
+    ).order_by(desc(Messagings.last_updated)).first()
 
   if not messaging:
     messaging = Messagings(user_id = other_user_id, sender_id = user_id)
@@ -833,7 +830,7 @@ def create_user_messages_with_other_user(user_id, other_user_id):
   db_session.commit()
 
   event_name = f'FOR-USER:{other_user_id}'
-  event_data = json.dumps(new_notification.serialize)
+  event_data = json.dumps(fill_notification(new_notification.serialize))
   event_msg = format_sse(event_data, event_name)
   SSE.push(event_msg)
 
@@ -861,8 +858,11 @@ def sign_in():
   if not you:
     return make_response({"message": "Username not found"}, 400)
 
-  checkPassword = bcrypt.hashpw(password, you.password.encode('utf8'))
-  if checkPassword != you.password:
+  user_password = you.password.encode('utf8')
+  print('password', password)
+  print('user_password', user_password)
+  checkPassword = bcrypt.hashpw(password, user_password)
+  if checkPassword != user_password:
     return make_response({"message": "Invalid Credentials"}, 400)
 
   you.last_loggedin = func.now()
@@ -1072,11 +1072,11 @@ def toggle_user_follow(user_id, follows_id):
     db_session.commit()
 
     event_name = f'FOR-USER:{follows_id}'
-    event_data = json.dumps(new_notification.serialize)
+    event_data = json.dumps(fill_notification(new_notification.serialize))
     event_msg = format_sse(event_data, event_name)
     SSE.push(event_msg)
 
-    return jsonify(message = 'followed', following = True)
+    return jsonify(message = 'followed', following = new_follow.serialize)
 
 
 @user_authorized
@@ -1102,7 +1102,7 @@ def toggle_user_post_like(user_id, post_id):
     # does like; unlike
     db_session.delete(likes)
     db_session.commit()
-    return jsonify(message = 'un-liked post', liked = False)
+    return jsonify(message = 'un-liked post', like = None)
   else:
     # does not like post; like and notify post owner
     new_like = PostLikes(owner_id = user_id, post_id = post_id)
@@ -1122,11 +1122,11 @@ def toggle_user_post_like(user_id, post_id):
 
     if post.owner_id != user_id:
       event_name = f'FOR-USER:{post.owner_id}'
-      event_data = json.dumps(new_notification.serialize)
+      event_data = json.dumps(fill_notification(new_notification.serialize))
       event_msg = format_sse(event_data, event_name)
       SSE.push(event_msg)
 
-    return jsonify(message = 'liked post', liked = True)
+    return jsonify(message = 'liked post', like = new_like.serialize)
 
 
 @user_authorized
@@ -1152,7 +1152,7 @@ def toggle_user_comment_like(user_id, comment_id):
     # does like; unlike
     db_session.delete(likes)
     db_session.commit()
-    return jsonify(message = 'un-liked comment', liked = False)
+    return jsonify(message = 'un-liked comment', like = None)
   else:
     # does not like comment; like and notify comment owner
     new_like = CommentLikes(owner_id = user_id, comment_id = comment_id)
@@ -1172,11 +1172,11 @@ def toggle_user_comment_like(user_id, comment_id):
 
     if comment.owner_id != user_id:
       event_name = f'FOR-USER:{comment.owner_id}'
-      event_data = json.dumps(new_notification.serialize)
+      event_data = json.dumps(fill_notification(new_notification.serialize))
       event_msg = format_sse(event_data, event_name)
       SSE.push(event_msg)
 
-    return jsonify(message = 'liked comment', liked = True)
+    return jsonify(message = 'liked comment', like = new_like.serialize)
 
 
 
