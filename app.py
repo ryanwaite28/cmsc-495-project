@@ -607,7 +607,7 @@ def get_post_comments(post_id):
 def get_comment_by_id(comment_id):
   comment = db_session.query(Comments).filter(Comments.id == comment_id).first()
   if not comment:
-    return make_response({ "message": "Comment does not exist with id " + str(comment) }, 404)
+    return make_response({ "message": "Comment does not exist with id " + str(comment_id) }, 404)
 
   comment_data = comment.serialize
   return jsonify(comment = comment_data)
@@ -617,7 +617,7 @@ def get_comment_by_id(comment_id):
 def get_comment_likes(comment_id):
   comment = db_session.query(Comments).filter(Comments.id == comment_id).first()
   if not comment:
-    return make_response({ "message": "Comment does not exist with id " + str(comment) }, 404)
+    return make_response({ "message": "Comment does not exist with id " + str(comment_id) }, 404)
 
   comment_likes = db_session.query(CommentLikes).filter(CommentLikes.comment_id == comment_id).all()
   comment_likes_data = [c.serialize for c in comment_likes]
@@ -996,17 +996,13 @@ def update_post(post_id):
 
 @user_authorized
 @app.route('/comments/<int:comment_id>', methods=['PUT'])
-def update_comment(post_id, comment_id):
+def update_comment(comment_id):
   user = check_request_auth()
   data = json.loads(request.data)
 
-  post = db_session.query(Posts).filter(Posts.id == post_id).first()
-  if not post:
-    return make_response({ "message": "Post does not exist with id " + str(post_id) }, 404)
-
   comment = db_session.query(Comments).filter(Comments.id == comment_id).filter(Comments.owner_id == user['id']).first()
   if not comment:
-    return make_response({ "message": "Comment does not exist with id " + str(comment) }, 404)
+    return make_response({ "message": "Comment does not exist with id " + str(comment_id) }, 404)
 
   if "body" not in data:
     return make_response({"message": "Body field is required"}, 400)
