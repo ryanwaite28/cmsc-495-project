@@ -515,14 +515,14 @@ def check_user_following(user_id, follows_id):
 def check_user_post_like(user_id, post_id):
   check = db_session.query(PostLikes).filter_by(owner_id = user_id).filter_by(post_id = post_id).first()
   result = check.serialize if check is not None else None
-  return jsonify(following = result)
+  return jsonify(post_likes = result)
 
 
 @app.route('/users/<int:user_id>/check-comment-like/<int:comment_id>', methods=['GET'])
 def check_user_comment_like(user_id, comment_id):
   check = db_session.query(CommentLikes).filter_by(owner_id = user_id).filter_by(comment_id = comment_id).first()
   result = check.serialize if check is not None else None
-  return jsonify(following = result)
+  return jsonify(comment_likes = result)
 
 
 
