@@ -410,8 +410,8 @@ def index():
 
 @app.route('/check_session', methods=['GET'])
 def check_session():
-  data = check_request_auth()
-  result = jsonify(data = None) if not data else data
+  user = check_request_auth()
+  result = jsonify(user = user)
   return result
 
 
