@@ -290,13 +290,11 @@ def listen():
 
 
 # authorized user version
-@user_authorized
+# @user_authorized
 @app.route('/subscribe', methods=['GET'])
 def subscribe():
-  user = check_request_auth()
-
-  def stream(id):
-    messages = SSE.listen(id)  # returns a queue.Queue
+  def stream():
+    messages = SSE.listen()  # returns a queue.Queue
     yield format_sse(data = 'pong')
     while True:
       print('waiting for next message in stream...')
@@ -304,7 +302,7 @@ def subscribe():
       print('message arrived in stream; yielding:', msg)
       yield msg
 
-  resp = Response(stream(user['id']), mimetype = 'text/event-stream')
+  resp = Response(stream(), mimetype = 'text/event-stream')
   
   print('listeners:', SSE.listeners, len(SSE.listeners))
 
