@@ -4,7 +4,7 @@ import os, re, jwt, json, html, bcrypt, queue, string, random, datetime
 from functools import wraps
 from dotenv import load_dotenv
 
-from flask import Flask, Response, make_response, request, jsonify
+from flask import Flask, Response, make_response, request, jsonify, session as user_session
 from sqlalchemy.sql import func
 from sqlalchemy import desc, asc
 
@@ -58,13 +58,16 @@ class MessageAnnouncer:
     return q
 
   def push(self, msg, id = None):
-    if id:
+    if id and id in self.messages_queue_by_request_sid:
       print('pushing to client listening with id:', id)
       try:
         self.messages_queue_by_request_sid[id].put_nowait(msg)
       except queue.Full:
         print('deleting queue for client listening with id:', id)
         del self.messages_queue_by_request_sid[id]
+      except Exception as e:
+        print('error pushing sse:', e)
+        
 
     else:
       for i in reversed(range(len(self.listeners))):
@@ -73,6 +76,8 @@ class MessageAnnouncer:
         except queue.Full:
           print('deleting queue for client listening at index:', i)
           del self.listeners[i]
+        except Exception as e:
+          print('error pushing sse:', e)
 
 def format_sse(data, event = None):
   msg = f'data: {data}\n\n'
@@ -82,6 +87,7 @@ def format_sse(data, event = None):
 
 
 SSE = MessageAnnouncer()
+SSE_TEST = MessageAnnouncer()
 
 
 app = Flask(__name__)
@@ -196,29 +202,29 @@ def fill_notification(notification_obj):
   from_user = notification_obj['from']
   from_user_prefix = "[unknown/deleted user]" if not from_user else from_user['username']
 
-  if notification_obj.event == event_types["NEW_FOLLOWER"]:
+  if notification_obj['event'] == event_types["NEW_FOLLOWER"]:
     message = f'{from_user_prefix} started following you.'
     notification_obj['message'] = message
 
-  if notification_obj.event == event_types["NEW_MESSAGE"]:
+  if notification_obj['event'] == event_types["NEW_MESSAGE"]:
     message = f'{from_user_prefix} sent you a message.'
     notification_obj['message'] = message
 
-  if notification_obj.event == event_types["POST_COMMENT"]:
+  if notification_obj['event'] == event_types["POST_COMMENT"]:
     message = f'{from_user_prefix} commented on your post.'
     notification_obj['message'] = message
     post = db_session.query(Posts).filter(Posts.id == notification_obj.target_id).first()
     if post:
       notification_obj['post'] = post.serialize
 
-  if notification_obj.event == event_types["POST_LIKE"]:
+  if notification_obj['event'] == event_types["POST_LIKE"]:
     message = f'{from_user_prefix} liked your post.'
     notification_obj['message'] = message
     post = db_session.query(Posts).filter(Posts.id == notification_obj.target_id).first()
     if post:
       notification_obj['post'] = post.serialize
 
-  if notification_obj.event == event_types["COMMENT_LIKE"]:
+  if notification_obj['event'] == event_types["COMMENT_LIKE"]:
     message = f'{from_user_prefix} liked your comment.'
     notification_obj['message'] = message
     comment = db_session.query(Comments).filter(Comments.id == notification_obj.target_id).first()
@@ -239,12 +245,20 @@ def root_toute():
   return make_response({ "message": "Blog Application" }, 200)
 
 
-@app.route('/get-session-cookie', methods=['GET'])
-def get_session_cookie():
+@app.route('/get-session-token', methods=['GET'])
+def get_session_token():
   session_id = get_session_id_jwt()
   resp = make_response({ "session_id": session_id }, 200)
+  resp.headers['session_id'] = session_id
   resp.set_cookie('session_id', session_id)
+  user_session['session_id'] = session_id
   return resp
+
+
+@app.route('/clear-session-token', methods=['GET'])
+def clear_session_token():
+  user_session.clear()
+  return { "message": "session cleared" }, 200
 
   
 @app.route('/test-make-jwt', methods=['GET'])
@@ -256,8 +270,33 @@ def test_make_jwt():
 @app.route('/listen', methods=['GET'])
 def listen():
   def stream(id):
-    # messages = SSE.listen(id)  # returns a queue.Queue
-    messages = SSE.listen()  # no need to call with specific; keep app minimal
+    # messages = SSE_TEST.listen(id)  # returns a queue.Queue
+    messages = SSE_TEST.listen()  # no need to call with specific; keep app minimal
+    yield format_sse(data = 'pong')
+    while True:
+      print('waiting for next test message in stream...')
+      msg = messages.get()  # blocks until a new message arrives
+      print('test message arrived in stream; yielding:', msg)
+      yield msg
+
+  request_session_id = request.cookies.get('session_id')
+  session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
+  resp = Response(stream(session_id), mimetype = 'text/event-stream')
+  
+  print('test listeners:', SSE_TEST.listeners, len(SSE_TEST.listeners))
+
+  print('new test client listening.')
+  return resp
+
+
+# authorized user version
+@user_authorized
+@app.route('/subscribe', methods=['GET'])
+def subscribe():
+  user = check_request_auth()
+
+  def stream(id):
+    messages = SSE.listen(id)  # returns a queue.Queue
     yield format_sse(data = 'pong')
     while True:
       print('waiting for next message in stream...')
@@ -265,9 +304,7 @@ def listen():
       print('message arrived in stream; yielding:', msg)
       yield msg
 
-  request_session_id = request.cookies.get('session_id')
-  session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
-  resp = Response(stream(session_id), mimetype = 'text/event-stream')
+  resp = Response(stream(user['id']), mimetype = 'text/event-stream')
   
   print('listeners:', SSE.listeners, len(SSE.listeners))
 
@@ -281,8 +318,8 @@ def ping():
   session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
 
   msg = format_sse(data = 'pong')
-  SSE.push(msg = msg, id = session_id)
-  SSE.push(msg = format_sse(data = json.dumps({ "message": "admit one" }), event = 'FOR-USER:1'))
+  SSE_TEST.push(msg = msg, id = session_id)
+  SSE_TEST.push(msg = format_sse(data = json.dumps({ "message": "admit one" }), event = 'FOR-USER:1'))
   
   return {}, 200
 
@@ -298,7 +335,7 @@ def publish():
 
   request_session_id = request.cookies.get('session_id')
   session_id = decode_jwt(request_session_id)['session_id'] if request_session_id else None
-  SSE.push(msg = msg, id = session_id)
+  SSE_TEST.push(msg = msg, id = session_id)
   return { "message": "Admit One" }, 200
 
 
@@ -337,7 +374,6 @@ def index():
           } catch (e) {
             console.log(e);
           }
-
           console.log(`FOR-USER event`, e, parsed);
         })
 
