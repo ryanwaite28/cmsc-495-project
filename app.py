@@ -213,21 +213,21 @@ def fill_notification(notification_obj):
   if notification_obj['event'] == event_types["POST_COMMENT"]:
     message = f'{from_user_prefix} commented on your post.'
     notification_obj['message'] = message
-    post = db_session.query(Posts).filter(Posts.id == notification_obj.target_id).first()
+    post = db_session.query(Posts).filter(Posts.id == notification_obj['target_id']).first()
     if post:
       notification_obj['post'] = post.serialize
 
   if notification_obj['event'] == event_types["POST_LIKE"]:
     message = f'{from_user_prefix} liked your post.'
     notification_obj['message'] = message
-    post = db_session.query(Posts).filter(Posts.id == notification_obj.target_id).first()
+    post = db_session.query(Posts).filter(Posts.id == notification_obj['target_id']).first()
     if post:
       notification_obj['post'] = post.serialize
 
   if notification_obj['event'] == event_types["COMMENT_LIKE"]:
     message = f'{from_user_prefix} liked your comment.'
     notification_obj['message'] = message
-    comment = db_session.query(Comments).filter(Comments.id == notification_obj.target_id).first()
+    comment = db_session.query(Comments).filter(Comments.id == notification_obj['target_id']).first()
     if comment:
       notification_obj['comment'] = comment.serialize
 
