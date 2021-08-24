@@ -995,7 +995,7 @@ def update_post(post_id):
 
 
 @user_authorized
-@app.route('/posts/<int:post_id>/comments/<int:comment_id>', methods=['PUT'])
+@app.route('/comments/<int:comment_id>', methods=['PUT'])
 def update_comment(post_id, comment_id):
   user = check_request_auth()
   data = json.loads(request.data)
