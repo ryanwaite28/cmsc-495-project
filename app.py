@@ -10,7 +10,7 @@ from sqlalchemy.sql import func
 from sqlalchemy import desc, asc, or_, and_
 
 from cloudinary import config as cloudinary_config
-from cloudinary.uploader import upload as cloudinary_upload
+from cloudinary.uploader import upload as cloudinary_upload, destroy as cloudinary_destroy
 from cloudinary.utils import cloudinary_url
 
 from models import db_session
@@ -27,12 +27,12 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = '6Y#6G1$56F)$JD8*4G!?/Eoift4gk%&^(N*(|]={;96dfs3TYD5$)F&*DFj/YDR'
 cors = CORS(app, supports_credentials=True, origin = '*')
 
-@app.after_request
-def after_request(response):
-  response.headers.add('Access-Control-Allow-Origin', '*')
-  response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-  response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-  return response
+# @app.after_request
+# def after_request(response):
+#   response.headers.add('Access-Control-Allow-Origin', '*')
+#   response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+#   response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+#   return response
 
 CLOUDINARY_URL = os.getenv('CLOUDINARY_URL')
 CLOUDINARY_API_KEY = os.getenv('CLOUDINARY_API_KEY')
@@ -247,12 +247,12 @@ def fill_notification(notification_obj):
 
 # Users
 
-@app.route('/', methods=['GET', 'OPTIONS'])
+@app.route('/', methods=['GET'])
 def root_toute():
   return make_response({ "message": "Blog Application" }, 200)
 
 
-@app.route('/get-session-token', methods=['GET', 'OPTIONS'])
+@app.route('/get-session-token', methods=['GET'])
 def get_session_token():
   session_id = get_session_id_jwt()
   resp = make_response({ "session_id": session_id }, 200)
@@ -262,19 +262,19 @@ def get_session_token():
   return resp
 
 
-@app.route('/clear-session-token', methods=['GET', 'OPTIONS'])
+@app.route('/clear-session-token', methods=['GET'])
 def clear_session_token():
   user_session.clear()
   return { "message": "session cleared" }, 200
 
   
-@app.route('/test-make-jwt', methods=['GET', 'OPTIONS'])
+@app.route('/test-make-jwt', methods=['GET'])
 def test_make_jwt():
   data = make_jwt({ "message": "Admit One" })
   print(data)
   return make_response({ "results": data }, 200)
 
-@app.route('/listen', methods=['GET', 'OPTIONS'])
+@app.route('/listen', methods=['GET'])
 def listen():
   def stream(id):
     # messages = SSE_TEST.listen(id)  # returns a queue.Queue
@@ -298,7 +298,7 @@ def listen():
 
 # authorized user version
 # @user_authorized
-@app.route('/subscribe', methods=['GET', 'OPTIONS'])
+@app.route('/subscribe', methods=['GET'])
 def subscribe():
   def stream():
     messages = SSE.listen()  # returns a queue.Queue
@@ -329,7 +329,7 @@ def ping():
   return {}, 200
 
 
-@app.route('/publish', methods=['POST', 'OPTIONS'])
+@app.route('/publish', methods=['POST'])
 def publish():
   '''
   route for testing SSE
@@ -415,28 +415,28 @@ def index():
     </body>"""
 
 
-@app.route('/check_session', methods=['GET', 'OPTIONS'])
+@app.route('/check_session', methods=['GET'])
 def check_session():
   user = check_request_auth()
   result = jsonify(user = user)
   return result
 
 
-@app.route('/users/all', methods=['GET', 'OPTIONS'])
+@app.route('/users/all', methods=['GET'])
 def get_users_all():
   users = db_session.query(Users).order_by(desc(Users.id)).all()
   users_data = [u.serialize for u in users]
   return jsonify(users = users_data)
 
 
-@app.route('/users/<int:user_id>', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>', methods=['GET'])
 def get_user_by_id(user_id):
   user = db_session.query(Users).filter_by(id = user_id).first()
   return jsonify(user = user.serialize)
 
 
 @user_authorized
-@app.route('/users/<int:user_id>/notifications', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/notifications', methods=['GET'])
 def get_user_notifications(user_id):
   user = check_request_auth()
   if user_id != user['id']:
@@ -448,7 +448,7 @@ def get_user_notifications(user_id):
 
 
 @user_authorized
-@app.route('/users/<int:user_id>/messagings', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/messagings', methods=['GET'])
 def get_user_messagings(user_id):
   user = check_request_auth()
   if user_id != user['id']:
@@ -470,7 +470,7 @@ def get_user_messagings(user_id):
 
 
 @user_authorized
-@app.route('/users/<int:user_id>/messagings/<int:other_user_id>/messages', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/messagings/<int:other_user_id>/messages', methods=['GET'])
 def get_user_messages_with_other_user(user_id, other_user_id):
   user = check_request_auth()
   if user_id != user['id']:
@@ -488,35 +488,35 @@ def get_user_messages_with_other_user(user_id, other_user_id):
   return jsonify(messages = messages_data)
 
 
-@app.route('/users/<int:user_id>/followers', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/followers', methods=['GET'])
 def get_user_followers(user_id):
   followers = db_session.query(Follows).filter_by(follows_id = user_id).all()
   followers_data = [f.serialize for f in followers]
   return jsonify(followers = followers_data)
 
 
-@app.route('/users/<int:user_id>/followings', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/followings', methods=['GET'])
 def get_user_followings(user_id):
   followings = db_session.query(Follows).filter_by(user_id = user_id).all()
   followings_data = [f.serialize for f in followings]
   return jsonify(followings = followings_data)
 
 
-@app.route('/users/<int:user_id>/check-follow/<int:follows_id>', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/check-follow/<int:follows_id>', methods=['GET'])
 def check_user_following(user_id, follows_id):
   check = db_session.query(Follows).filter_by(user_id = user_id).filter_by(follows_id = follows_id).first()
   result = check.serialize if check is not None else None
   return jsonify(following = result)
 
 
-@app.route('/users/<int:user_id>/check-post-like/<int:post_id>', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/check-post-like/<int:post_id>', methods=['GET'])
 def check_user_post_like(user_id, post_id):
   check = db_session.query(PostLikes).filter_by(owner_id = user_id).filter_by(post_id = post_id).first()
   result = check.serialize if check is not None else None
   return jsonify(post_likes = result)
 
 
-@app.route('/users/<int:user_id>/check-comment-like/<int:comment_id>', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/check-comment-like/<int:comment_id>', methods=['GET'])
 def check_user_comment_like(user_id, comment_id):
   check = db_session.query(CommentLikes).filter_by(owner_id = user_id).filter_by(comment_id = comment_id).first()
   result = check.serialize if check is not None else None
@@ -526,14 +526,14 @@ def check_user_comment_like(user_id, comment_id):
 
 # Posts
 
-@app.route('/posts/all', methods=['GET', 'OPTIONS'])
+@app.route('/posts/all', methods=['GET'])
 def get_posts_all():
   posts = db_session.query(Posts).order_by(desc(Posts.id)).all()
   posts_data = [p.serialize for p in posts]
   return jsonify(posts = posts_data)
 
 
-@app.route('/users/<int:user_id>/posts/all', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/posts/all', methods=['GET'])
 def get_user_posts_all(user_id):
   user = db_session.query(Users).filter_by(id = user_id).first()
   if not user:
@@ -544,7 +544,7 @@ def get_user_posts_all(user_id):
   return jsonify(posts = posts_data)
 
 
-@app.route('/users/<int:user_id>/posts', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/posts', methods=['GET'])
 def get_user_posts(user_id):
   user = db_session.query(Users).filter_by(id = user_id).first()
   if not user:
@@ -555,7 +555,7 @@ def get_user_posts(user_id):
   return jsonify(posts = posts_data)
 
 
-@app.route('/users/<int:user_id>/posts/paginate/<int:post_id>', methods=['GET', 'OPTIONS'])
+@app.route('/users/<int:user_id>/posts/paginate/<int:post_id>', methods=['GET'])
 def get_user_posts_desc_id(user_id, post_id):
   user = db_session.query(Users).filter_by(id = user_id).first()
   if not user:
@@ -566,7 +566,7 @@ def get_user_posts_desc_id(user_id, post_id):
   return jsonify(posts = posts_data)
 
 
-@app.route('/posts/<int:post_id>', methods=['GET', 'OPTIONS'])
+@app.route('/posts/<int:post_id>', methods=['GET'])
 def get_post_by_id(post_id):
   post = db_session.query(Posts).filter(Posts.id == post_id).first()
   if not post:
@@ -576,7 +576,7 @@ def get_post_by_id(post_id):
   return jsonify(post = post_data)
 
 
-@app.route('/posts/<int:post_id>/likes', methods=['GET', 'OPTIONS'])
+@app.route('/posts/<int:post_id>/likes', methods=['GET'])
 def get_post_likes(post_id):
   post = db_session.query(Posts).filter(Posts.id == post_id).first()
   if not post:
@@ -590,7 +590,7 @@ def get_post_likes(post_id):
 
 # Comments
 
-@app.route('/posts/<int:post_id>/comments', methods=['GET', 'OPTIONS'])
+@app.route('/posts/<int:post_id>/comments', methods=['GET'])
 def get_post_comments(post_id):
   post = db_session.query(Posts).filter(Posts.id == post_id).first()
   if not post:
@@ -601,7 +601,7 @@ def get_post_comments(post_id):
   return jsonify(comments = comments_data)
 
 
-@app.route('/comments/<int:comment_id>', methods=['GET', 'OPTIONS'])
+@app.route('/comments/<int:comment_id>', methods=['GET'])
 def get_comment_by_id(comment_id):
   comment = db_session.query(Comments).filter(Comments.id == comment_id).first()
   if not comment:
@@ -611,7 +611,7 @@ def get_comment_by_id(comment_id):
   return jsonify(comment = comment_data)
 
 
-@app.route('/comments/<int:comment_id>/likes', methods=['GET', 'OPTIONS'])
+@app.route('/comments/<int:comment_id>/likes', methods=['GET'])
 def get_comment_likes(comment_id):
   comment = db_session.query(Comments).filter(Comments.id == comment_id).first()
   if not comment:
@@ -626,7 +626,7 @@ def get_comment_likes(comment_id):
 
 # --- POST Routes --- #
 
-@app.route('/test-make-jwt', methods=['POST', 'OPTIONS'])
+@app.route('/test-make-jwt', methods=['POST'])
 def test_make_jwt_post():
   try:
     payload = json.loads(request.data)
@@ -641,7 +641,7 @@ def test_make_jwt_post():
 
 
 
-@app.route('/sign_up', methods=['POST', 'OPTIONS'])
+@app.route('/sign_up', methods=['POST'])
 def sign_up():
   data = json.loads(request.data)
 
@@ -695,7 +695,7 @@ def sign_up():
 
 
 @user_authorized
-@app.route('/posts', methods=['POST', 'OPTIONS'])
+@app.route('/posts', methods=['POST'])
 def create_post():
   user = check_request_auth()
   data = json.loads(request.data)
@@ -735,7 +735,7 @@ def create_post():
 
 
 @user_authorized
-@app.route('/posts/<int:post_id>/comments', methods=['POST', 'OPTIONS'])
+@app.route('/posts/<int:post_id>/comments', methods=['POST'])
 def create_comment(post_id):
   user = check_request_auth()
   data = json.loads(request.data)
@@ -787,7 +787,7 @@ def create_comment(post_id):
 
 
 @user_authorized
-@app.route('/users/<int:user_id>/messagings/<int:other_user_id>/messages', methods=['POST', 'OPTIONS'])
+@app.route('/users/<int:user_id>/messagings/<int:other_user_id>/messages', methods=['POST'])
 def create_user_messages_with_other_user(user_id, other_user_id):
   user = check_request_auth()
   if user_id != user['id']:
@@ -848,7 +848,7 @@ def create_user_messages_with_other_user(user_id, other_user_id):
 
 # --- PUT Routes --- #
 
-@app.route('/sign_in', methods=['PUT', 'OPTIONS'])
+@app.route('/sign_in', methods=['PUT'])
 def sign_in():
   data = json.loads(request.data)
 
@@ -883,7 +883,7 @@ def sign_in():
 
 
 @user_authorized
-@app.route('/update_account', methods=['PUT', 'OPTIONS'])
+@app.route('/update_account', methods=['PUT'])
 def update_account():
   data = json.loads(request.data) if request.data else None
   user = check_request_auth()
@@ -903,10 +903,11 @@ def update_account():
     username = html.escape(data['username'])
     if not re.match("([a-zA-Z][\w\-]+)", username):
       return make_response({"message": "Username must be numbers and letters only; underscores and dashes are allowed"}, 400)
-    check_username = db_session.query(Users).filter_by(username = username).first()
-    if check_username:
-      return make_response({"message": "Username already in use"}, 400)
-    you.username = username
+    if username != you.username:
+      check_username = db_session.query(Users).filter_by(username = username).first()
+      if check_username:
+        return make_response({"message": "Username already in use"}, 400)
+      you.username = username
 
   if "bio" in data:
     bio = html.escape(data['bio'])
@@ -921,11 +922,72 @@ def update_account():
   return jsonify(message = "Account Updated!", user = user_data, token = new_token)
 
 
+
 @user_authorized
-@app.route('/update_icon', methods=['PUT', 'OPTIONS'])
+@app.route('/update_password', methods=['PUT'])
+def update_password():
+  data = json.loads(request.data) if request.data else None
+  user = check_request_auth()
+
+  if not data:
+    return jsonify(error = True, message = "request data not provided"), 400
+  # if 'oldPassword' not in data:
+  #   return jsonify(error = True, message = "oldPassword not provided in request data"), 400
+  if 'password' not in data:
+    return jsonify(error = True, message = "password not provided in request data"), 400
+  if 'confirmPassword' not in data:
+    return jsonify(error = True, message = "confirmPassword not provided in request data"), 400
+
+  # oldPassword = html.escape( data['oldPassword'] ).encode('utf8')
+  password = html.escape( data['password'] ).encode('utf8')
+  confirmPassword = html.escape( data['confirmPassword'] ).encode('utf8')
+
+  if password != confirmPassword:
+    return jsonify(error = True, message = "Passwords must match"), 400
+
+  you = db_session.query(Users).filter_by(id = user['id']).one()
+  # checkPassword = bcrypt.hashpw(oldPassword, you.password.encode('utf8'))
+  # if checkPassword != you.password:
+  #   return jsonify(error = True, message = "Old password is incorrect"), 400
+
+  hash = bcrypt.hashpw(password, bcrypt.gensalt())
+  print('new password hash:', hash)
+  hash_str = hash.decode("utf-8")
+  you.password = hash_str
+  db_session.add(you)
+  db_session.commit()
+
+  return jsonify(message = "Password Updated!")
+
+
+
+@user_authorized
+@app.route('/update_icon', methods=['PUT'])
 def update_icon():
   if not cloudinary_env_proper:
     return make_response({"message": "Upload service unavailable at this time."}, 503)
+
+  user = check_request_auth()
+  you = db_session.query(Users).filter_by(id = user['id']).one()
+
+  print(request.files)
+
+  # if 'icon_file' not in request.files or not request.files['icon_file']:
+  #   try:
+  #     cloudinary_destroy(you.icon_id)
+  #   except Exception as e:
+  #     print('could not destroy image with id:', you.icon_id, e)
+
+  #   # clear user icon
+  #   you.icon_link = ''
+  #   you.icon_id = ''
+  #   db_session.add(you)
+  #   db_session.commit()
+
+  #   user_data = you.serialize
+  #   new_token = make_jwt(user_data)
+
+  #   return jsonify(message = "Icon Updated!", user = user_data, token = new_token)
 
   file = request.files['icon_file']
   if not file:
@@ -935,6 +997,13 @@ def update_icon():
   you = db_session.query(Users).filter_by(id = user['id']).one()
 
   try:
+    if you.icon_id != '':
+      try:
+        cloudinary_destroy(you.icon_id)
+        print(f'deleted image with id {you.icon_id}')
+      except Exception as e:
+        print('could not destroy image with id:', you.icon_id, e)
+
     res = upload_file(file)
 
     icon_id = res["upload_result"]["public_id"]
@@ -955,7 +1024,7 @@ def update_icon():
 
 
 @user_authorized
-@app.route('/posts/<int:post_id>', methods=['PUT', 'OPTIONS'])
+@app.route('/posts/<int:post_id>', methods=['PUT'])
 def update_post(post_id):
   user = check_request_auth()
   data = json.loads(request.data)
@@ -1000,7 +1069,7 @@ def update_post(post_id):
 
 
 @user_authorized
-@app.route('/comments/<int:comment_id>', methods=['PUT', 'OPTIONS'])
+@app.route('/comments/<int:comment_id>', methods=['PUT'])
 def update_comment(comment_id):
   user = check_request_auth()
   data = json.loads(request.data)
@@ -1037,7 +1106,7 @@ def update_comment(comment_id):
 
 
 @user_authorized
-@app.route('/users/<int:user_id>/toggle-follow/<int:follows_id>', methods=['PUT', 'OPTIONS'])
+@app.route('/users/<int:user_id>/toggle-follow/<int:follows_id>', methods=['PUT'])
 def toggle_user_follow(user_id, follows_id):
   '''
   Toggle user following another user.
@@ -1087,7 +1156,7 @@ def toggle_user_follow(user_id, follows_id):
 
 
 @user_authorized
-@app.route('/users/<int:user_id>/toggle-post-like/<int:post_id>', methods=['PUT', 'OPTIONS'])
+@app.route('/users/<int:user_id>/toggle-post-like/<int:post_id>', methods=['PUT'])
 def toggle_user_post_like(user_id, post_id):
   '''
   Toggle user liking a post.
@@ -1137,7 +1206,7 @@ def toggle_user_post_like(user_id, post_id):
 
 
 @user_authorized
-@app.route('/users/<int:user_id>/toggle-comment-like/<int:comment_id>', methods=['PUT', 'OPTIONS'])
+@app.route('/users/<int:user_id>/toggle-comment-like/<int:comment_id>', methods=['PUT'])
 def toggle_user_comment_like(user_id, comment_id):
   '''
   Toggle user liking a comment.
@@ -1190,7 +1259,7 @@ def toggle_user_comment_like(user_id, comment_id):
 # --- DELETE Routes --- #
 
 @user_authorized
-@app.route('/users/<int:user_id>', methods=['DELETE', 'OPTIONS'])
+@app.route('/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
   user = check_request_auth()
   if user_id != user['id']:
@@ -1211,7 +1280,7 @@ def delete_user(user_id):
 
 
 @user_authorized
-@app.route('/posts/<int:post_id>', methods=['DELETE', 'OPTIONS'])
+@app.route('/posts/<int:post_id>', methods=['DELETE'])
 def delete_post(post_id):
   user = check_request_auth()
 
@@ -1225,7 +1294,7 @@ def delete_post(post_id):
 
 
 @user_authorized
-@app.route('/comments/<int:comment_id>', methods=['DELETE', 'OPTIONS'])
+@app.route('/comments/<int:comment_id>', methods=['DELETE'])
 def delete_comment(comment_id):
   user = check_request_auth()
 
