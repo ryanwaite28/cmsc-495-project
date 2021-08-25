@@ -82,7 +82,7 @@ class Posts(Base):
       'title': self.title,
       'body': self.body,
       'hashtags': self.hashtags,
-      'hashtags_list': self.hashtags.split(','),
+      'hashtags_list': self.hashtags.split(',') if self.hashtags != '' else [],
       'date_created': str(self.date_created),
       'last_updated': str(self.last_updated),
     }
@@ -131,6 +131,7 @@ class Comments(Base):
       'post_id': self.post_id,
       'body': self.body,
       'hashtags': self.hashtags,
+      'hashtags_list': self.hashtags.split(',') if self.hashtags != '' else [],
       'date_created': str(self.date_created),
       'last_updated': str(self.last_updated),
     }
