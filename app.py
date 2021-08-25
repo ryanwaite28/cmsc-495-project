@@ -12,6 +12,7 @@ from sqlalchemy import desc, asc, or_, and_
 from cloudinary import config as cloudinary_config
 from cloudinary.uploader import upload as cloudinary_upload, destroy as cloudinary_destroy
 from cloudinary.utils import cloudinary_url
+from sqlalchemy.sql.expression import true
 
 from models import db_session
 from models import Users, Follows, Posts, PostLikes, Comments
@@ -103,10 +104,14 @@ SSE_TEST = MessageAnnouncer()
 
 event_types = {
   "NEW_FOLLOWER": "NEW_FOLLOWER",
+  "UNFOLLOWER": "UNFOLLOWER",
   "NEW_MESSAGE": "NEW_MESSAGE",
   "POST_COMMENT": "POST_COMMENT",
   "POST_LIKE": "POST_LIKE",
+  "POST_UNLIKE": "POST_UNLIKE",
   "COMMENT_LIKE": "COMMENT_LIKE",
+  "COMMENT_UNLIKE": "COMMENT_UNLIKE",
+  "COMMENT_DELETE": "COMMENT_DELETE",
 }
 
 target_types = {
@@ -213,6 +218,10 @@ def fill_notification(notification_obj):
     message = f'{from_user_prefix} started following you.'
     notification_obj['message'] = message
 
+  if notification_obj['event'] == event_types["UNFOLLOWER"]:
+    message = f'{from_user_prefix} unfollowed you.'
+    notification_obj['message'] = message
+
   if notification_obj['event'] == event_types["NEW_MESSAGE"]:
     message = f'{from_user_prefix} sent you a message.'
     notification_obj['message'] = message
@@ -231,8 +240,29 @@ def fill_notification(notification_obj):
     if post:
       notification_obj['post'] = post.serialize
 
+  if notification_obj['event'] == event_types["POST_UNLIKE"]:
+    message = f'{from_user_prefix} unliked your post.'
+    notification_obj['message'] = message
+    post = db_session.query(Posts).filter(Posts.id == notification_obj['target_id']).first()
+    if post:
+      notification_obj['post'] = post.serialize
+
+  if notification_obj['event'] == event_types["COMMENT_DELETE"]:
+    message = f'{from_user_prefix} deleted their comment on your post.'
+    notification_obj['message'] = message
+    post = db_session.query(Posts).filter(Posts.id == notification_obj['target_id']).first()
+    if post:
+      notification_obj['post'] = post.serialize
+
   if notification_obj['event'] == event_types["COMMENT_LIKE"]:
     message = f'{from_user_prefix} liked your comment.'
+    notification_obj['message'] = message
+    comment = db_session.query(Comments).filter(Comments.id == notification_obj['target_id']).first()
+    if comment:
+      notification_obj['comment'] = comment.serialize
+
+  if notification_obj['event'] == event_types["COMMENT_UNLIKE"]:
+    message = f'{from_user_prefix} unliked your comment.'
     notification_obj['message'] = message
     comment = db_session.query(Comments).filter(Comments.id == notification_obj['target_id']).first()
     if comment:
@@ -443,6 +473,15 @@ def get_user_notifications(user_id):
     return make_response({"message": "User id from auth does not match user id in url"}, 400)
   
   notifications = db_session.query(Notifications).filter_by(to_id = user_id).order_by(desc(Notifications.id)).all()
+  
+  # for n in notifications:
+  #   n.read = True
+  #   db_session.add(n)
+  # you = db_session.query(Users).filter_by(id = user['id']).one()
+  # you.last_read_notifications = func.now()
+  # db_session.add(you)
+  # db_session.commit()
+
   notifications_data = [fill_notification(n.serialize) for n in notifications]
   return jsonify(notifications = notifications_data)
 
@@ -1129,8 +1168,23 @@ def toggle_user_follow(user_id, follows_id):
 
   if follows:
     # is following; unfollow
+    new_notification = Notifications(
+      from_id = user_id,
+      to_id = follows_id,
+      event = event_types["UNFOLLOWER"],
+      target_type = target_types["USER"],
+      target_id = follows_id,
+    )
+
+    db_session.add(new_notification)
     db_session.delete(follows)
     db_session.commit()
+
+    event_name = f'FOR-USER:{follows_id}'
+    event_data = json.dumps(fill_notification(new_notification.serialize))
+    event_msg = format_sse(event_data, event_name)
+    SSE.push(event_msg)
+
     return jsonify(message = 'unfollowed', following = False)
   else:
     # is NOT following; follow and send notification
@@ -1176,8 +1230,25 @@ def toggle_user_post_like(user_id, post_id):
 
   if likes:
     # does like; unlike
+    if post.owner_id != user['id']:
+      new_notification = Notifications(
+        from_id = user['id'],
+        to_id = post.owner_id,
+        event = event_types["POST_UNLIKE"],
+        target_type = target_types["POST"],
+        target_id = post_id,
+      )
+      db_session.add(new_notification)
+
     db_session.delete(likes)
     db_session.commit()
+
+    if post.owner_id != user['id']:
+      event_name = f'FOR-USER:{post.owner_id}'
+      event_data = json.dumps(fill_notification(new_notification.serialize))
+      event_msg = format_sse(event_data, event_name)
+      SSE.push(event_msg)
+      
     return jsonify(message = 'un-liked post', like = None)
   else:
     # does not like post; like and notify post owner
@@ -1226,8 +1297,25 @@ def toggle_user_comment_like(user_id, comment_id):
 
   if likes:
     # does like; unlike
+    if comment.owner_id != user['id']:
+      new_notification = Notifications(
+        from_id = user['id'],
+        to_id = comment.owner_id,
+        event = event_types["COMMENT_UNLIKE"],
+        target_type = target_types["COMMENT"],
+        target_id = comment_id,
+      )
+      db_session.add(new_notification)
+
     db_session.delete(likes)
     db_session.commit()
+
+    if comment.owner_id != user['id']:
+      event_name = f'FOR-USER:{comment.owner_id}'
+      event_data = json.dumps(fill_notification(new_notification.serialize))
+      event_msg = format_sse(event_data, event_name)
+      SSE.push(event_msg)
+      
     return jsonify(message = 'un-liked comment', like = None)
   else:
     # does not like comment; like and notify comment owner
@@ -1302,7 +1390,26 @@ def delete_comment(comment_id):
   if not comment:
     return make_response({ "message": "Comment does not exist with id " + str(comment_id) }, 404)
   db_session.delete(comment)
+
+  post_owner_id = comment.post_rel.owner_id
+
+  if post_owner_id != user['id']:
+    new_notification = Notifications(
+      from_id = user['id'],
+      to_id = post_owner_id,
+      event = event_types["COMMENT_DELETE"],
+      target_type = target_types["COMMENT"],
+      target_id = comment_id,
+    )
+    db_session.add(new_notification)
+
   db_session.commit()
+
+  if post_owner_id != user['id']:
+    event_name = f'FOR-USER:{post_owner_id}'
+    event_data = json.dumps(fill_notification(new_notification.serialize))
+    event_msg = format_sse(event_data, event_name)
+    SSE.push(event_msg)
 
   return jsonify(message = "Comment Deleted")
 
