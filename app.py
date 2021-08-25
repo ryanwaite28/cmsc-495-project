@@ -10,7 +10,7 @@ from sqlalchemy.sql import func
 from sqlalchemy import desc, asc, or_, and_
 
 from cloudinary import config as cloudinary_config
-from cloudinary.uploader import upload as cloudinary_upload
+from cloudinary.uploader import upload as cloudinary_upload, destroy as cloudinary_destroy
 from cloudinary.utils import cloudinary_url
 
 from models import db_session
@@ -903,10 +903,11 @@ def update_account():
     username = html.escape(data['username'])
     if not re.match("([a-zA-Z][\w\-]+)", username):
       return make_response({"message": "Username must be numbers and letters only; underscores and dashes are allowed"}, 400)
-    check_username = db_session.query(Users).filter_by(username = username).first()
-    if check_username:
-      return make_response({"message": "Username already in use"}, 400)
-    you.username = username
+    if username != you.username:
+      check_username = db_session.query(Users).filter_by(username = username).first()
+      if check_username:
+        return make_response({"message": "Username already in use"}, 400)
+      you.username = username
 
   if "bio" in data:
     bio = html.escape(data['bio'])
@@ -921,11 +922,72 @@ def update_account():
   return jsonify(message = "Account Updated!", user = user_data, token = new_token)
 
 
+
+@user_authorized
+@app.route('/update_password', methods=['PUT'])
+def update_password():
+  data = json.loads(request.data) if request.data else None
+  user = check_request_auth()
+
+  if not data:
+    return jsonify(error = True, message = "request data not provided"), 400
+  # if 'oldPassword' not in data:
+  #   return jsonify(error = True, message = "oldPassword not provided in request data"), 400
+  if 'password' not in data:
+    return jsonify(error = True, message = "password not provided in request data"), 400
+  if 'confirmPassword' not in data:
+    return jsonify(error = True, message = "confirmPassword not provided in request data"), 400
+
+  # oldPassword = html.escape( data['oldPassword'] ).encode('utf8')
+  password = html.escape( data['password'] ).encode('utf8')
+  confirmPassword = html.escape( data['confirmPassword'] ).encode('utf8')
+
+  if password != confirmPassword:
+    return jsonify(error = True, message = "Passwords must match"), 400
+
+  you = db_session.query(Users).filter_by(id = user['id']).one()
+  # checkPassword = bcrypt.hashpw(oldPassword, you.password.encode('utf8'))
+  # if checkPassword != you.password:
+  #   return jsonify(error = True, message = "Old password is incorrect"), 400
+
+  hash = bcrypt.hashpw(password, bcrypt.gensalt())
+  print('new password hash:', hash)
+  hash_str = hash.decode("utf-8")
+  you.password = hash_str
+  db_session.add(you)
+  db_session.commit()
+
+  return jsonify(message = "Password Updated!")
+
+
+
 @user_authorized
 @app.route('/update_icon', methods=['PUT'])
 def update_icon():
   if not cloudinary_env_proper:
     return make_response({"message": "Upload service unavailable at this time."}, 503)
+
+  user = check_request_auth()
+  you = db_session.query(Users).filter_by(id = user['id']).one()
+
+  print(request.files)
+
+  # if 'icon_file' not in request.files or not request.files['icon_file']:
+  #   try:
+  #     cloudinary_destroy(you.icon_id)
+  #   except Exception as e:
+  #     print('could not destroy image with id:', you.icon_id, e)
+
+  #   # clear user icon
+  #   you.icon_link = ''
+  #   you.icon_id = ''
+  #   db_session.add(you)
+  #   db_session.commit()
+
+  #   user_data = you.serialize
+  #   new_token = make_jwt(user_data)
+
+  #   return jsonify(message = "Icon Updated!", user = user_data, token = new_token)
 
   file = request.files['icon_file']
   if not file:
@@ -935,6 +997,13 @@ def update_icon():
   you = db_session.query(Users).filter_by(id = user['id']).one()
 
   try:
+    if you.icon_id != '':
+      try:
+        cloudinary_destroy(you.icon_id)
+        print(f'deleted image with id {you.icon_id}')
+      except Exception as e:
+        print('could not destroy image with id:', you.icon_id, e)
+
     res = upload_file(file)
 
     icon_id = res["upload_result"]["public_id"]
